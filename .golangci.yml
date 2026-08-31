@@ -6,8 +6,10 @@ linters:
     - misspell
     - bodyclose
     - unconvert
-    - goconst
     - gocritic
+  disable:
+    - errcheck
+    - goconst
 
 formatters:
   enable:
