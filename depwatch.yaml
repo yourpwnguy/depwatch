@@ -1,0 +1,46 @@
+# depwatch configuration — see docs/idea.md §19 for the full schema.
+#
+# Secrets are intentionally absent: the Slack webhook URL is supplied via the
+# environment variable named below (DEPWATCH_SLACK_WEBHOOK), never written here.
+
+organization: acme-corp
+
+# Internal packages grouped by ecosystem. Only ecosystems whose registry is enabled
+# below are scanned — a package listed under a disabled ecosystem is ignored.
+ecosystems:
+  npm:
+    - "@acme/scheduler"
+    - "@acme/auth-core"
+    - "@acme/data-pipeline"
+  pypi:
+    - requests
+    - crypto
+    - threading
+  crates:
+    - acme_crypto
+
+database:
+  path: depwatch.db
+
+scan:
+  workers: 8 # concurrent (package x registry) lookups
+  timeout: 10s # per-request timeout
+  retries: 3 # retries on transient HTTP errors / 429
+
+# Enable the public registries to check your internal names against.
+registries:
+  npm:
+    enabled: true
+  pypi:
+    enabled: true
+  crates:
+    enabled: true
+
+alerts:
+  slack:
+    enabled: false
+    webhook_env: DEPWATCH_SLACK_WEBHOOK
+
+thresholds:
+  alert: high # notify when a collision reaches at least this risk
+  block_ci: critical # CI fails when a collision reaches at least this risk

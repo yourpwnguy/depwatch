@@ -1,0 +1,28 @@
+# Build artifacts
+/depwatch
+/depwatch.exe
+/dist/
+
+# Local scan database (generated at runtime)
+depwatch.db
+*.db
+HANDOFF.md
+idea.md
+ui_mock.py
+HANDOFF.md
+idea.md
+ui_mock.py
+
+# Go
+*.test
+*.out
+coverage.txt
+go.work
+go.work.sum
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
