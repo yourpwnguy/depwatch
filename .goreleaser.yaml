@@ -1,7 +1,8 @@
 version: 2
 
 builds:
-  - binary: depwatch
+  - dir: ./cmd/depwatch
+    binary: depwatch
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -15,10 +16,10 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats: ["tar.gz"]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: ["zip"]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
