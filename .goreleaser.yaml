@@ -25,10 +25,11 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  exclude:
-    - "^docs:"
-    - "^test:"
-    - "^chore:"
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
