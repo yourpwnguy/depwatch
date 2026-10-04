@@ -6,7 +6,10 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w
+      # Stamp the release tag into the binary so --version and the banner
+      # show the real version. This must match the Makefile's
+      # -X main.version=$(VERSION); without it, release binaries say "dev".
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - darwin
