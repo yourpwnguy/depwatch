@@ -102,9 +102,10 @@ func Analyze(c *Collision, prev *ScanEntry, now time.Time, org string) Assessmen
 	}
 
 	// --- adoption: only judged when the registry actually reports counts ---------
-	// Several registries (PyPI, crates.io metadata) do not return download totals.
-	// Treating an absent count as "zero installs" would manufacture suspicion, so
-	// download rules apply only when a positive count is known.
+	// Several registries (PyPI) do not return download totals, and even npm can
+	// fail to return one on a bad day. Treating an unknown count as "zero
+	// installs" would manufacture suspicion, so download rules apply only when
+	// the count is known (DownloadsKnown). A positive count is inherently known.
 	if p.Downloads > 0 {
 		switch {
 		case p.Downloads >= hugeDownloads:
@@ -117,7 +118,7 @@ func Analyze(c *Collision, prev *ScanEntry, now time.Time, org string) Assessmen
 			a.add(wFewDownloads, Signal{Code: "LOW_REPUTATION", Severity: SigLow,
 				Message: "Public package has very low download history", Detail: downloads(p.Downloads)})
 		}
-	} else if knownZeroDownloads(p) {
+	} else if p.DownloadsKnown && knownZeroDownloads(p) {
 		a.add(wNoDownloads, Signal{Code: "NO_DOWNLOADS", Severity: SigMed,
 			Message: "Public package reports no installs at all"})
 	}
@@ -142,9 +143,10 @@ func (a *Assessment) add(weight int, s Signal) {
 	a.Score += weight
 }
 
-// knownZeroDownloads reports whether the registry genuinely told us the package has
-// no installs, as opposed to not reporting the metric at all. npm always returns a
-// count, so a zero there is meaningful.
+// knownZeroDownloads reports whether a zero count from this registry is a real
+// measurement rather than a missing metric. npm always returns a count on a
+// successful fetch, so a known zero there is meaningful. Callers must still
+// check DownloadsKnown first: a failed fetch is unknown, never zero.
 func knownZeroDownloads(p PackageInfo) bool {
 	return p.Registry == RegistryNpm
 }

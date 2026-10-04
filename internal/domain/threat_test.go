@@ -10,19 +10,23 @@ var testNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 func days(n int) time.Time { return testNow.Add(-time.Duration(n) * 24 * time.Hour) }
 
 // legit models a long-established, attributable, widely-used public package.
+// The download total comes from a real registry response (DownloadsKnown).
 func legit(name string) PackageInfo {
 	return PackageInfo{
 		Name: name, Registry: RegistryNpm, Version: "1.4.1",
 		CreatedAt: days(4307), Publisher: "Christopher Simpkins",
 		Repository: "https://github.com/chrissimpkins/crypto", Downloads: 5000000,
+		DownloadsKnown: true,
 	}
 }
 
 // squat models a freshly published, unattributable package with no installs.
+// The zero count is a genuine registry answer (DownloadsKnown), which is what
+// lets NO_DOWNLOADS fire for it.
 func squat(name string) PackageInfo {
 	return PackageInfo{
 		Name: name, Registry: RegistryNpm, Version: "0.0.1",
-		CreatedAt: days(3), Downloads: 0,
+		CreatedAt: days(3), Downloads: 0, DownloadsKnown: true,
 	}
 }
 
@@ -115,6 +119,7 @@ func TestThreat_OrgSpecificCollisionIsEscalated(t *testing.T) {
 		Name: "@acme/scheduler", Registry: RegistryNpm, Version: "1.2.0",
 		CreatedAt: days(200), Publisher: "someone",
 		Repository: "https://github.com/someone/scheduler", Downloads: 200,
+		DownloadsKnown: true,
 	}
 	got := Analyze(&Collision{
 		Type:     CollisionExact,
@@ -210,6 +215,26 @@ func TestThreat_MissingDownloadCountIsNotSuspicion(t *testing.T) {
 	}
 	if got.Threat != ThreatBenign {
 		t.Fatalf("threat = %s, want BENIGN\n%s", got.Threat, dump(got))
+	}
+}
+
+// TestThreat_FailedDownloadsFetchIsNotSuspicion guards the npm variant of the
+// same trap: when the downloads API call fails, the count stays 0 with
+// DownloadsKnown false. That unknown must not be scored as a known zero,
+// otherwise a transient registry blip adds +3 toward DANGEROUS.
+func TestThreat_FailedDownloadsFetchIsNotSuspicion(t *testing.T) {
+	pub := legit("requests")
+	pub.Downloads = 0
+	pub.DownloadsKnown = false // fetch failed; we simply do not know
+
+	got := Analyze(&Collision{
+		Type:     CollisionExact,
+		Internal: InternalPackage{Name: "requests"},
+		Public:   pub,
+	}, nil, testNow, "acme")
+
+	if hasSignal(got, "NO_DOWNLOADS") {
+		t.Fatalf("failed downloads fetch must not create NO_DOWNLOADS\n%s", dump(got))
 	}
 }
 

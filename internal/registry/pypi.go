@@ -14,7 +14,9 @@ import (
 const pypiURL = "https://pypi.org/pypi/"
 
 // pypiProject is the subset of the PyPI JSON API document we consume. PyPI does
-// not expose download counts in this endpoint, so Downloads stays 0 for PyPI.
+// not expose download counts in this endpoint, so Downloads stays 0 with
+// DownloadsKnown false for PyPI. Analyze skips download rules for unknown
+// counts, so the absent metric never creates suspicion.
 // The Releases map is used to find the earliest upload time (creation date).
 type pypiProject struct {
 	Info struct {

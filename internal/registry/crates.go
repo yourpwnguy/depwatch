@@ -52,12 +52,15 @@ func (r *cratesRegistry) Query(ctx context.Context, name string) (*domain.Packag
 	}
 	c := resp.Crate
 	return &domain.PackageInfo{
-		Name:       c.ID,
-		Registry:   domain.RegistryCrates,
-		Version:    c.MaxVersion,
-		CreatedAt:  c.CreatedAt,
-		UpdatedAt:  c.UpdatedAt,
-		Downloads:  c.Downloads,
-		Repository: clean(c.Repository),
+		Name:      c.ID,
+		Registry:  domain.RegistryCrates,
+		Version:   c.MaxVersion,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+		Downloads: c.Downloads,
+		// The crate metadata response always carries a download total on
+		// success, so a zero here is a genuine zero, not an absent metric.
+		DownloadsKnown: true,
+		Repository:     clean(c.Repository),
 	}, nil
 }

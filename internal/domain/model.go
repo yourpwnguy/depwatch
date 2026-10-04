@@ -42,21 +42,28 @@ const (
 //
 // Not all fields are populated by every registry:
 //   - Downloads: npm returns a count; PyPI/crates omit it (stays 0)
+//   - DownloadsKnown: true only when the registry actually reported a count.
+//     A failed npm downloads fetch leaves this false, so a network blip is
+//     never misread as "zero installs" (see Analyze).
 //   - Repository: PyPI may return "UNKNOWN" which is normalized to "" by clean()
 //   - Publisher: npm uses maintainer name; PyPI uses author/maintainer
 //   - CreatedAt: derived from earliest upload (PyPI) or creation timestamp (npm/crates)
 type PackageInfo struct {
-	Name       string
-	Registry   RegistryName
-	Version    string
-	Publisher  string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Downloads  int64
-	Repository string
-	Homepage   string
-	TarballURL string
-	Integrity  string
+	Name      string
+	Registry  RegistryName
+	Version   string
+	Publisher string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Downloads int64
+	// DownloadsKnown reports whether Downloads came from an actual registry
+	// response. False means "we do not know", never "zero". Consumers must
+	// check this before treating a zero count as evidence of anything.
+	DownloadsKnown bool
+	Repository     string
+	Homepage       string
+	TarballURL     string
+	Integrity      string
 }
 
 // InternalPackage is one entry from the organization's inventory: a package name

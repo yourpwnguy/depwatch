@@ -60,7 +60,13 @@ func (a *npmAdapter) Query(ctx context.Context, name string) (*domain.PackageInf
 		return nil, err
 	}
 	info := npmToInfo(&p)
-	info.Downloads = npmDownloads(ctx, a.timeout, a.retries, a.lim, name)
+	// The downloads fetch is best-effort. On failure ok is false and Downloads
+	// stays 0 with DownloadsKnown false, so Analyze treats the count as
+	// unknown rather than manufacturing a NO_DOWNLOADS signal from a blip.
+	if n, ok := npmDownloads(ctx, a.timeout, a.retries, a.lim, name); ok {
+		info.Downloads = n
+		info.DownloadsKnown = true
+	}
 	return info, nil
 }
 
@@ -83,17 +89,18 @@ func npmToInfo(p *npmPackument) *domain.PackageInfo {
 	}
 }
 
-// npmDownloads fetches the last-month download count. A failure (registry down,
-// package absent from the downloads API) yields 0 and is ignored by the caller,
-// because the download count is only a LOW-severity signal. This best-effort
-// approach keeps the scanner resilient to partial npm outages.
-func npmDownloads(ctx context.Context, timeout time.Duration, retries int, lim *Limiter, name string) int64 {
+// npmDownloads fetches the last-month download count. It returns ok=false when
+// the fetch fails (registry down, package absent from the downloads API), and
+// the caller must treat that as "unknown", not zero: a failed fetch says
+// nothing about the package. This best-effort approach keeps the scanner
+// resilient to partial npm outages without inventing suspicion.
+func npmDownloads(ctx context.Context, timeout time.Duration, retries int, lim *Limiter, name string) (int64, bool) {
 	var resp struct {
 		Downloads int64 `json:"downloads"`
 	}
 	encoded := strings.ReplaceAll(name, "/", "%2F")
 	if err := getJSON(ctx, timeout, retries, lim, npmDownloadsURL+encoded, nil, &resp); err != nil {
-		return 0
+		return 0, false
 	}
-	return resp.Downloads
+	return resp.Downloads, true
 }
