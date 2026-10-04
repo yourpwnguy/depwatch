@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -45,11 +46,17 @@ type npmAdapter struct {
 func (a *npmAdapter) Name() domain.RegistryName { return domain.RegistryNpm }
 
 // Query fetches the npm packument and the download count. Scoped names (e.g.
-// "@acme/scheduler") are URL-encoded as "%2F" for the registry API.
+// "@acme/scheduler") are URL-encoded as "%2F" for the registry API. A 404 on the
+// packument short-circuits to (nil, nil) before the downloads call, because the
+// common case (internal name absent from the public registry) must cost one
+// request, not two.
 func (a *npmAdapter) Query(ctx context.Context, name string) (*domain.PackageInfo, error) {
 	encoded := strings.ReplaceAll(name, "/", "%2F")
 	var p npmPackument
 	if err := getJSON(ctx, a.timeout, a.retries, a.lim, npmRegistryURL+encoded, nil, &p); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	info := npmToInfo(&p)

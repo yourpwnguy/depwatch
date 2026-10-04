@@ -17,6 +17,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,13 @@ import (
 
 	"github.com/yourpwnguy/depwatch/internal/domain"
 )
+
+// ErrNotFound signals that a registry has no package under the requested name
+// (HTTP 404). It is absence, not failure: callers map it to (nil, nil) so the
+// scanner records SAFE instead of a partial error. Keeping it distinct from
+// other errors is what lets Query skip follow-up work (like the npm downloads
+// call) for missing packages instead of doing it anyway and throwing it away.
+var ErrNotFound = errors.New("registry: package not found")
 
 // userAgent identifies depwatch to registries. crates.io in particular rejects
 // requests without a User-Agent, and identifying ourselves is good registry
@@ -98,15 +106,19 @@ func (r *httpRegistry) Name() domain.RegistryName { return r.name }
 func (r *httpRegistry) Query(ctx context.Context, name string) (*domain.PackageInfo, error) {
 	var p pypiProject
 	if err := getJSON(ctx, r.timeout, r.retries, r.lim, r.base+name+r.suffix, nil, &p); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return pypiToInfo(&p), nil
 }
 
 // getJSON performs a GET with context timeout, rate limiting, retries, and 404
-// handling. On 404 it returns (nil, nil) so callers can treat absence as "no
-// collision". A 429/5xx triggers a backoff and a limiter penalty, then a retry;
-// exhausted retries return the last error so the caller marks the lookup partial.
+// handling. On 404 it returns ErrNotFound so callers can tell "package does not
+// exist" apart from a successful fetch. A 429/5xx triggers a backoff and a
+// limiter penalty, then a retry; exhausted retries return the last error so the
+// caller marks the lookup partial.
 //
 // modify, if non-nil, may set request headers (e.g. crates.io's User-Agent
 // requirement). The response body is capped at 4 MiB to prevent memory exhaustion
@@ -143,7 +155,7 @@ func getJSON(ctx context.Context, timeout time.Duration, retries int, lim *Limit
 		switch resp.StatusCode {
 		case http.StatusNotFound:
 			resp.Body.Close()
-			return nil // package does not exist
+			return ErrNotFound
 		case http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
 			resp.Body.Close()
 			if lim != nil {

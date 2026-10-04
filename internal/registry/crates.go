@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -44,6 +45,9 @@ func (r *cratesRegistry) Query(ctx context.Context, name string) (*domain.Packag
 		req.Header.Set("User-Agent", userAgent)
 	}
 	if err := getJSON(ctx, r.timeout, r.retries, r.lim, cratesURL+name, modify, &resp); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	c := resp.Crate
