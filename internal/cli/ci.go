@@ -46,6 +46,10 @@ var ciCmd = &cobra.Command{
 		}
 
 		if breached {
+			// Close explicitly here: os.Exit skips deferred calls, so the
+			// deferred a.Close() above would never run on this path and the
+			// database handle would leak.
+			_ = a.Close()
 			os.Exit(2)
 		}
 		return nil
