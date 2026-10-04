@@ -59,7 +59,15 @@ type ScanOptions struct {
 func (a *App) Scan(ctx context.Context, opts ScanOptions) (*domain.ScanResult, error) {
 	pkgs := a.cfg.InternalPackages()
 	if opts.Ecosystem != "" {
-		pkgs = filterByEcosystem(pkgs, opts.Ecosystem)
+		// Validated through domain.ParseEcosystem (not an inline string
+		// compare) so an unknown name errors instead of matching nothing
+		// and printing a cheerful "0 packages" report for what is really
+		// a typo. Matching ignores case and surrounding spaces.
+		eco, err := domain.ParseEcosystem(opts.Ecosystem)
+		if err != nil {
+			return nil, err
+		}
+		pkgs = filterByEcosystem(pkgs, string(eco))
 	}
 
 	res, err := a.scanPipeline(ctx, pkgs, opts)

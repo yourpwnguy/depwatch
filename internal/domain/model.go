@@ -10,6 +10,11 @@ package domain
 
 import "time"
 
+import (
+	"fmt"
+	"strings"
+)
+
 // RegistryName identifies a public package registry. Each adapter in the
 // registry package maps one RegistryName to its HTTP API. The string values
 // match the YAML config keys and the user-facing output.
@@ -33,6 +38,21 @@ const (
 	EcosystemPypi   Ecosystem = "pypi"
 	EcosystemCrates Ecosystem = "crates"
 )
+
+// ParseEcosystem normalizes free-form user input ("NPM", " npm ") into a known
+// Ecosystem value. It errors on anything else so a typo can never silently
+// match zero packages and print an empty success report. Both the CLI (which
+// must fail before painting anything) and app.Scan (the backstop for every
+// other caller) validate through here, so there is exactly one definition of
+// "known ecosystem".
+func ParseEcosystem(s string) (Ecosystem, error) {
+	switch eco := Ecosystem(strings.ToLower(strings.TrimSpace(s))); eco {
+	case EcosystemNpm, EcosystemPypi, EcosystemCrates:
+		return eco, nil
+	default:
+		return "", fmt.Errorf("unknown ecosystem %q: want npm, pypi, or crates", s)
+	}
+}
 
 // PackageInfo is the normalized representation of a package as returned by any
 // registry adapter. Adapters translate their registry's proprietary JSON into

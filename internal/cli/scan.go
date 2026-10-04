@@ -35,6 +35,16 @@ var scanCmd = &cobra.Command{
 		}
 		ctx := cmd.Context()
 
+		// Fail fast on a bad --ecosystem before painting anything. The live
+		// renderer below lists rows up front, so validating only inside a.Scan
+		// would print a full banner and queued table before the error lands.
+		// a.Scan re-validates as the backstop for non-CLI callers.
+		if scanEcosystem != "" {
+			if _, err := domain.ParseEcosystem(scanEcosystem); err != nil {
+				return err
+			}
+		}
+
 		// Machine-readable path: run the scan, emit JSON. No animation.
 		if scanFormat == "json" {
 			res, err := a.Scan(ctx, app.ScanOptions{Ecosystem: scanEcosystem})
@@ -61,7 +71,10 @@ var scanCmd = &cobra.Command{
 		// permanently as lookups land and a single animated status line narrates the
 		// current step, so the finished output is the same report monitor prints and
 		// stays in scrollback (no alternate screen, no full-screen clears).
-		items, stats := buildLive(cfg)
+		items, stats, err := buildLive(cfg, scanEcosystem)
+		if err != nil {
+			return err
+		}
 		stats.Full = scanFull
 		lr := output.NewLiveScan(os.Stdout, stats, items)
 		lr.Start()
@@ -101,16 +114,35 @@ func init() {
 	scanCmd.Flags().BoolVarP(&scanFull, "full", "f", false, "show the full evidence block for every lookup")
 }
 
-// buildLive derives the pre-known lookup set from configuration. Each internal
+// buildLive derives the planned lookup set from configuration. Each internal
 // package is paired with the registry of its ecosystem (matching the scanner's
 // pairing rule), so the renderer can show "queued" lines before work starts.
-func buildLive(cfg *config.Config) ([]output.LiveItem, output.LiveStats) {
+// When ecosystem is non-empty only that ecosystem's packages are listed: without
+// this a filtered scan would show other ecosystems' rows stuck on "queued"
+// forever, since no worker would ever pick them up. stats.Inventory is set to
+// the rows actually shown so the banner count matches the table.
+func buildLive(cfg *config.Config, ecosystem string) ([]output.LiveItem, output.LiveStats, error) {
 	pkgs := cfg.InternalPackages()
+	if ecosystem != "" {
+		eco, err := domain.ParseEcosystem(ecosystem)
+		if err != nil {
+			return nil, output.LiveStats{}, err
+		}
+		var filtered []domain.InternalPackage
+		for _, p := range pkgs {
+			if p.Ecosystem == eco {
+				filtered = append(filtered, p)
+			}
+		}
+		pkgs = filtered
+	}
 	items := make([]output.LiveItem, 0, len(pkgs))
 	for _, p := range pkgs {
 		items = append(items, output.LiveItem{Pkg: p.Name, Reg: string(p.Ecosystem)})
 	}
-	return items, buildStats(cfg)
+	stats := buildStats(cfg)
+	stats.Inventory = len(items)
+	return items, stats, nil
 }
 
 // buildStats derives the header metadata (org, enabled registries, inventory size,

@@ -137,3 +137,16 @@ func TestRiskAtLeast(t *testing.T) {
 		t.Fatal("LOW should not be >= CRITICAL")
 	}
 }
+
+func TestParseEcosystem(t *testing.T) {
+	for _, s := range []string{"npm", "NPM", " npm ", "pypi", "crates"} {
+		if _, err := ParseEcosystem(s); err != nil {
+			t.Errorf("ParseEcosystem(%q) should succeed, got: %v", s, err)
+		}
+	}
+	for _, s := range []string{"npmm", "maven", ""} {
+		if _, err := ParseEcosystem(s); err == nil {
+			t.Errorf("ParseEcosystem(%q) should fail, got nil", s)
+		}
+	}
+}

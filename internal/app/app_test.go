@@ -121,6 +121,24 @@ func TestApp_ScanSafeWhenNoPublicMatch(t *testing.T) {
 	}
 }
 
+// TestApp_ScanRejectsUnknownEcosystem pins the fail-fast fix: a typo like
+// --ecosystem npmm must error instead of succeeding emptily with "0 packages".
+// A valid ecosystem (any casing) must still scan normally.
+func TestApp_ScanRejectsUnknownEcosystem(t *testing.T) {
+	fake := &fakeRegistry{name: domain.RegistryNpm, collide: map[string]*domain.PackageInfo{}}
+	a, _ := newTestApp(t, fake)
+
+	if _, err := a.Scan(context.Background(), app.ScanOptions{Ecosystem: "npmm"}); err == nil {
+		t.Fatal("expected error for unknown ecosystem, got nil")
+	}
+
+	for _, eco := range []string{"npm", "NPM", " npm "} {
+		if _, err := a.Scan(context.Background(), app.ScanOptions{Ecosystem: eco}); err != nil {
+			t.Fatalf("ecosystem %q should scan, got error: %v", eco, err)
+		}
+	}
+}
+
 // TestApp_ScanEntriesSorted pins the stable-output fix: entries must come back
 // in (package, registry) order no matter what order workers finish in. It scans
 // repeatedly because a single run could pass by luck on the old code (workers
