@@ -8,11 +8,10 @@
 // architectural invariant that keeps the security logic trustworthy.
 package domain
 
-import "time"
-
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // RegistryName identifies a public package registry. Each adapter in the
