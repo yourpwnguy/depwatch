@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -113,10 +114,19 @@ func WriteInventory(w io.Writer, org string, pkgs []domain.InternalPackage) {
 	for _, p := range pkgs {
 		byEco[string(p.Ecosystem)] = append(byEco[string(p.Ecosystem)], p.Name)
 	}
+	// Sort section keys so the inventory prints in the same order every run.
+	// Map iteration is random in Go; without this the ecosystem sections
+	// shuffle between identical invocations. Names inside each section keep
+	// their input order. Only the ordering changes, not the layout.
+	ecos := make([]string, 0, len(byEco))
+	for eco := range byEco {
+		ecos = append(ecos, eco)
+	}
+	sort.Strings(ecos)
 	var b strings.Builder
-	for eco, names := range byEco {
+	for _, eco := range ecos {
 		b.WriteString(headerStyle.Render(eco + ":\n"))
-		for _, n := range names {
+		for _, n := range byEco[eco] {
 			b.WriteString("  ")
 			b.WriteString(n)
 			b.WriteString("\n")

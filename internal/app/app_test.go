@@ -120,3 +120,36 @@ func TestApp_ScanSafeWhenNoPublicMatch(t *testing.T) {
 		}
 	}
 }
+
+// TestApp_ScanEntriesSorted pins the stable-output fix: entries must come back
+// in (package, registry) order no matter what order workers finish in. It scans
+// repeatedly because a single run could pass by luck on the old code (workers
+// sometimes happen to finish alphabetically).
+func TestApp_ScanEntriesSorted(t *testing.T) {
+	fake := &fakeRegistry{
+		name: domain.RegistryNpm,
+		collide: map[string]*domain.PackageInfo{
+			"evil-dep": {
+				Name:      "evil-dep",
+				Registry:  domain.RegistryNpm,
+				Version:   "1.0.0",
+				CreatedAt: time.Now(),
+			},
+		},
+	}
+	a, _ := newTestApp(t, fake)
+	for i := 0; i < 20; i++ {
+		res, err := a.Scan(context.Background(), app.ScanOptions{})
+		if err != nil {
+			t.Fatalf("scan %d: %v", i, err)
+		}
+		for j := 1; j < len(res.Entries); j++ {
+			prev, cur := res.Entries[j-1], res.Entries[j]
+			if prev.PackageName > cur.PackageName ||
+				(prev.PackageName == cur.PackageName && prev.Registry > cur.Registry) {
+				t.Fatalf("scan %d: entries not sorted: %s (%s) before %s (%s)",
+					i, prev.PackageName, prev.Registry, cur.PackageName, cur.Registry)
+			}
+		}
+	}
+}

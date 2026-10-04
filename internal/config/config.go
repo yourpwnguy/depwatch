@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -156,6 +157,15 @@ func (c *Config) InternalPackages() []domain.InternalPackage {
 			})
 		}
 	}
+	// Sort by name so scan and display order is stable run to run. The loop
+	// above iterates a Go map, which comes out in random order, so without
+	// this the table rows would shuffle between identical scans.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Ecosystem < out[j].Ecosystem
+	})
 	return out
 }
 

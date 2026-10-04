@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -97,6 +98,17 @@ func (a *App) scanPipeline(ctx context.Context, pkgs []domain.InternalPackage, o
 		}
 		res.Entries = append(res.Entries, *r.entry)
 	}
+	// Sort entries so identical scans print rows in the same order every time.
+	// Workers finish in random order, so the append above would otherwise
+	// shuffle the table between runs and make diffs pure noise. Sorting here
+	// (rather than in the renderers) fixes it once for every caller and every
+	// output format. Row content and layout are untouched, only the order.
+	sort.Slice(res.Entries, func(i, j int) bool {
+		if res.Entries[i].PackageName != res.Entries[j].PackageName {
+			return res.Entries[i].PackageName < res.Entries[j].PackageName
+		}
+		return res.Entries[i].Registry < res.Entries[j].Registry
+	})
 	return res, nil
 }
 
