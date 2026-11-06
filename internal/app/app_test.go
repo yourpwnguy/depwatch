@@ -107,6 +107,100 @@ func TestApp_ScanDetectsCollisionAndAlerts(t *testing.T) {
 	}
 }
 
+// TestApp_ScanOnlyAlertsOnNewOrChanged pins the alert-dedupe fix: a collision
+// alerts once when it is first discovered (NEW), and a rescan that finds the
+// same risk (KNOWN) must not add another alert. Otherwise every scan cycle
+// spams the channel and the alerts table grows forever.
+func TestApp_ScanOnlyAlertsOnNewOrChanged(t *testing.T) {
+	fake := &fakeRegistry{
+		name: domain.RegistryNpm,
+		collide: map[string]*domain.PackageInfo{
+			"evil-dep": {
+				Name:      "evil-dep",
+				Registry:  domain.RegistryNpm,
+				Version:   "1.0.0",
+				CreatedAt: time.Now(),
+			},
+		},
+	}
+	a, store := newTestApp(t, fake)
+
+	if _, err := a.Scan(context.Background(), app.ScanOptions{}); err != nil {
+		t.Fatalf("first scan: %v", err)
+	}
+	alerts, err := store.UnresolvedAlerts()
+	if err != nil {
+		t.Fatalf("alerts after first scan: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("first scan should add 1 alert, got %d", len(alerts))
+	}
+
+	// Same package, same risk: the entry is KNOWN now, so it must not re-alert.
+	if _, err := a.Scan(context.Background(), app.ScanOptions{}); err != nil {
+		t.Fatalf("second scan: %v", err)
+	}
+	alerts, err = store.UnresolvedAlerts()
+	if err != nil {
+		t.Fatalf("alerts after second scan: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("KNOWN rescan must not add alerts, got %d", len(alerts))
+	}
+}
+
+// TestApp_ScanAlertsOnEscalation covers the other half of the rule: a
+// previously benign observation that has since worsened is CHANGED, and that
+// is exactly the event that should notify again.
+func TestApp_ScanAlertsOnEscalation(t *testing.T) {
+	fake := &fakeRegistry{
+		name: domain.RegistryNpm,
+		collide: map[string]*domain.PackageInfo{
+			"evil-dep": {
+				Name:      "evil-dep",
+				Registry:  domain.RegistryNpm,
+				Version:   "1.0.0",
+				CreatedAt: time.Now(),
+			},
+		},
+	}
+	a, store := newTestApp(t, fake)
+
+	// Seed a previous benign observation so the next scan sees a change.
+	if err := store.RecordEvent(&domain.ScanEntry{
+		PackageName: "evil-dep",
+		Ecosystem:   domain.EcosystemNpm,
+		Registry:    domain.RegistryNpm,
+		Status:      domain.StatusKnown,
+		Risk:        domain.RiskInfo,
+		LastSeen:    time.Now(),
+	}); err != nil {
+		t.Fatalf("seed previous event: %v", err)
+	}
+
+	res, err := a.Scan(context.Background(), app.ScanOptions{})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	var changed bool
+	for _, e := range res.Entries {
+		if e.PackageName == "evil-dep" {
+			changed = e.Status == domain.StatusChanged
+		}
+	}
+	if !changed {
+		t.Fatal("evil-dep should be CHANGED after a benign prior observation")
+	}
+
+	alerts, err := store.UnresolvedAlerts()
+	if err != nil {
+		t.Fatalf("alerts: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("escalation should add 1 alert, got %d", len(alerts))
+	}
+}
+
 func TestApp_ScanSafeWhenNoPublicMatch(t *testing.T) {
 	fake := &fakeRegistry{name: domain.RegistryNpm, collide: map[string]*domain.PackageInfo{}}
 	a, _ := newTestApp(t, fake)

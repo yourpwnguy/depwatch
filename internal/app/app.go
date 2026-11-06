@@ -140,10 +140,18 @@ func filterByEcosystem(pkgs []domain.InternalPackage, eco string) []domain.Inter
 	return out
 }
 
-// isAlertable reports whether an entry should raise a notification. Safe entries
-// never alert; everything else alerts when its risk meets the threshold.
+// isAlertable reports whether an entry should raise a notification.
+//
+// Only NEW and CHANGED observations alert. A KNOWN entry was already notified
+// on the scan that discovered it, and its risk has not moved since, so alerting
+// again every cycle is pure noise: users mute the channel and the alerts table
+// grows without bound. An escalation (CHANGED) alerts again because the risk
+// actually worsened, which is exactly the event worth waking someone for.
+// SAFE entries never alert; everything else still has to meet the threshold.
 func isAlertable(e *domain.ScanEntry, threshold string) bool {
-	if e.Status == domain.StatusSafe {
+	switch e.Status {
+	case domain.StatusNew, domain.StatusChanged:
+	default:
 		return false
 	}
 	return domain.RiskAtLeast(e.Risk, domain.RiskLevel(threshold))
