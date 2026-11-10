@@ -19,7 +19,7 @@ const cratesURL = "https://crates.io/api/v1/crates/"
 // counts, which crates.io provides in the crate metadata response.
 type cratesRegistry struct {
 	lim     *Limiter
-	timeout time.Duration
+	client  *http.Client
 	retries int
 }
 
@@ -44,7 +44,7 @@ func (r *cratesRegistry) Query(ctx context.Context, name string) (*domain.Packag
 		// getJSON, but we restate it here to be explicit and policy-compliant).
 		req.Header.Set("User-Agent", userAgent)
 	}
-	if err := getJSON(ctx, r.timeout, r.retries, r.lim, cratesURL+name, modify, &resp); err != nil {
+	if err := getJSON(ctx, r.client, r.retries, r.lim, cratesURL+name, modify, &resp); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, nil
 		}

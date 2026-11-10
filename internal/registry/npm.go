@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ type npmPackument struct {
 // caller because the count is only a signal, not a blocker.
 type npmAdapter struct {
 	lim     *Limiter
-	timeout time.Duration
+	client  *http.Client
 	retries int
 }
 
@@ -53,7 +54,7 @@ func (a *npmAdapter) Name() domain.RegistryName { return domain.RegistryNpm }
 func (a *npmAdapter) Query(ctx context.Context, name string) (*domain.PackageInfo, error) {
 	encoded := strings.ReplaceAll(name, "/", "%2F")
 	var p npmPackument
-	if err := getJSON(ctx, a.timeout, a.retries, a.lim, npmRegistryURL+encoded, nil, &p); err != nil {
+	if err := getJSON(ctx, a.client, a.retries, a.lim, npmRegistryURL+encoded, nil, &p); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, nil
 		}
@@ -63,7 +64,7 @@ func (a *npmAdapter) Query(ctx context.Context, name string) (*domain.PackageInf
 	// The downloads fetch is best-effort. On failure ok is false and Downloads
 	// stays 0 with DownloadsKnown false, so Analyze treats the count as
 	// unknown rather than manufacturing a NO_DOWNLOADS signal from a blip.
-	if n, ok := npmDownloads(ctx, a.timeout, a.retries, a.lim, name); ok {
+	if n, ok := npmDownloads(ctx, a.client, a.retries, a.lim, name); ok {
 		info.Downloads = n
 		info.DownloadsKnown = true
 	}
@@ -94,12 +95,12 @@ func npmToInfo(p *npmPackument) *domain.PackageInfo {
 // the caller must treat that as "unknown", not zero: a failed fetch says
 // nothing about the package. This best-effort approach keeps the scanner
 // resilient to partial npm outages without inventing suspicion.
-func npmDownloads(ctx context.Context, timeout time.Duration, retries int, lim *Limiter, name string) (int64, bool) {
+func npmDownloads(ctx context.Context, client *http.Client, retries int, lim *Limiter, name string) (int64, bool) {
 	var resp struct {
 		Downloads int64 `json:"downloads"`
 	}
 	encoded := strings.ReplaceAll(name, "/", "%2F")
-	if err := getJSON(ctx, timeout, retries, lim, npmDownloadsURL+encoded, nil, &resp); err != nil {
+	if err := getJSON(ctx, client, retries, lim, npmDownloadsURL+encoded, nil, &resp); err != nil {
 		return 0, false
 	}
 	return resp.Downloads, true

@@ -56,17 +56,23 @@ type Registry interface {
 }
 
 // New constructs the adapter for the named registry, including a per-registry
-// rate limiter. Unknown names return an error so misconfiguration fails fast
-// rather than silently skipping a registry.
+// rate limiter and a shared HTTP client. Unknown names return an error so
+// misconfiguration fails fast rather than silently skipping a registry.
+//
+// One client per adapter is deliberate: http.Client is safe for concurrent use
+// and its Transport pools keep-alive connections per host. Creating a client
+// per request (the old behavior) threw that pool away and forced a fresh TCP
+// and TLS handshake for every package. The timeout still applies per request.
 func New(name domain.RegistryName, timeout time.Duration, retries int) (Registry, error) {
 	lim := newLimiter(name)
+	client := &http.Client{Timeout: timeout}
 	switch name {
 	case domain.RegistryNpm:
-		return &npmAdapter{lim: lim, timeout: timeout, retries: retries}, nil
+		return &npmAdapter{lim: lim, client: client, retries: retries}, nil
 	case domain.RegistryPypi:
-		return &httpRegistry{lim: lim, base: pypiURL, suffix: "/json", name: name, timeout: timeout, retries: retries}, nil
+		return &httpRegistry{lim: lim, base: pypiURL, suffix: "/json", name: name, client: client, retries: retries}, nil
 	case domain.RegistryCrates:
-		return &cratesRegistry{lim: lim, timeout: timeout, retries: retries}, nil
+		return &cratesRegistry{lim: lim, client: client, retries: retries}, nil
 	default:
 		return nil, fmt.Errorf("registry %q not supported", name)
 	}
@@ -97,7 +103,7 @@ type httpRegistry struct {
 	base    string
 	suffix  string
 	name    domain.RegistryName
-	timeout time.Duration
+	client  *http.Client
 	retries int
 }
 
@@ -105,7 +111,7 @@ func (r *httpRegistry) Name() domain.RegistryName { return r.name }
 
 func (r *httpRegistry) Query(ctx context.Context, name string) (*domain.PackageInfo, error) {
 	var p pypiProject
-	if err := getJSON(ctx, r.timeout, r.retries, r.lim, r.base+name+r.suffix, nil, &p); err != nil {
+	if err := getJSON(ctx, r.client, r.retries, r.lim, r.base+name+r.suffix, nil, &p); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, nil
 		}
@@ -114,17 +120,17 @@ func (r *httpRegistry) Query(ctx context.Context, name string) (*domain.PackageI
 	return pypiToInfo(&p), nil
 }
 
-// getJSON performs a GET with context timeout, rate limiting, retries, and 404
-// handling. On 404 it returns ErrNotFound so callers can tell "package does not
-// exist" apart from a successful fetch. A 429/5xx triggers a backoff and a
-// limiter penalty, then a retry; exhausted retries return the last error so the
-// caller marks the lookup partial.
+// getJSON performs a GET with the adapter's shared client, rate limiting,
+// retries, and 404 handling. On 404 it returns ErrNotFound so callers can tell
+// "package does not exist" apart from a successful fetch. A 429/5xx triggers a
+// backoff and a limiter penalty, then a retry; exhausted retries return the
+// last error so the caller marks the lookup partial.
 //
-// modify, if non-nil, may set request headers (e.g. crates.io's User-Agent
-// requirement). The response body is capped at 4 MiB to prevent memory exhaustion
-// from a misbehaving registry.
-func getJSON(ctx context.Context, timeout time.Duration, retries int, lim *Limiter, url string, modify func(*http.Request), out any) error {
-	client := &http.Client{Timeout: timeout}
+// The caller owns client and must reuse it across requests so its Transport can
+// pool keep-alive connections. modify, if non-nil, may set request headers
+// (e.g. crates.io's User-Agent requirement). The response body is capped at
+// 4 MiB to prevent memory exhaustion from a misbehaving registry.
+func getJSON(ctx context.Context, client *http.Client, retries int, lim *Limiter, url string, modify func(*http.Request), out any) error {
 	var lastErr error
 	for attempt := 0; attempt <= retries; attempt++ {
 		if lim != nil {
