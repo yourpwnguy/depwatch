@@ -16,7 +16,7 @@ var exportCmd = &cobra.Command{
 	Short: "Export a full scan as JSON to a file",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, _, err := buildApp()
 		if err != nil {
 			return err
 		}

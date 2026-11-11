@@ -16,16 +16,11 @@ var ciCmd = &cobra.Command{
 	Use:   "ci",
 	Short: "Run a scan for CI and exit non-zero on policy breach",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, cfg, err := buildApp()
 		if err != nil {
 			return err
 		}
 		defer a.Close()
-
-		cfg, err := configLoad(cmd)
-		if err != nil {
-			return err
-		}
 
 		res, err := a.CI(cmd.Context())
 		if err != nil {

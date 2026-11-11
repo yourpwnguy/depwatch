@@ -14,7 +14,7 @@ var alertsCmd = &cobra.Command{
 	Use:   "alerts",
 	Short: "List unresolved alerts",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, _, err := buildApp()
 		if err != nil {
 			return err
 		}

@@ -24,15 +24,11 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan all internal packages against public registries",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, cfg, err := buildApp()
 		if err != nil {
 			return err
 		}
 		defer a.Close()
-		cfg, err := configLoad(cmd)
-		if err != nil {
-			return err
-		}
 		ctx := cmd.Context()
 
 		// Fail fast on a bad --ecosystem before painting anything. The live

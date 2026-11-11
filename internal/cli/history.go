@@ -13,7 +13,7 @@ var historyCmd = &cobra.Command{
 	Short: "Show stored scan history for a package",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, _, err := buildApp()
 		if err != nil {
 			return err
 		}

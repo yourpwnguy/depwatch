@@ -18,16 +18,11 @@ var packageCmd = &cobra.Command{
 	Short: "Investigate a single package across all enabled registries",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := buildApp(cmd)
+		a, cfg, err := buildApp()
 		if err != nil {
 			return err
 		}
 		defer a.Close()
-
-		cfg, err := configLoad(cmd)
-		if err != nil {
-			return err
-		}
 
 		res, err := a.Package(cmd.Context(), args[0])
 		if err != nil {

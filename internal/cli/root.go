@@ -24,10 +24,6 @@ import (
 // terminal. Used to suppress progress animation when output is piped.
 func termIsTerminal(fd int) bool { return term.IsTerminal(fd) }
 
-// configLoad loads configuration from the resolved path. It is a thin wrapper so
-// command helpers share one loading path with buildApp.
-func configLoad(_ *cobra.Command) (*config.Config, error) { return config.Load(configPath) }
-
 // rootCmd is the base command. It holds the --config flag and provides the
 // entrypoint for all subcommands. The config path is resolved once and shared
 // across the command tree via the package-level configPath variable.
@@ -44,20 +40,29 @@ var configPath string
 var cliVersion string
 
 func init() {
-	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		return nil
-	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file path")
 }
 
-// buildApp constructs the App from configuration. It is called by every command
-// and is the single place where infrastructure (registries, store) is assembled.
-// The config path is resolved from the package-level variable set by cobra flags.
-func buildApp(_ *cobra.Command) (*app.App, error) {
+// buildApp loads configuration and assembles the App. It is the single entry
+// point commands use, and it returns the loaded config too so callers do not
+// have to load the file a second time just to read a threshold or build the
+// banner stats. One read means one source of truth per command run.
+func buildApp() (*app.App, *config.Config, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	a, err := newApp(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a, cfg, nil
+}
+
+// newApp wires registries and storage for an already-loaded config. It is split
+// from buildApp so long-running modes (monitor) can rebuild the App for a new
+// scan cycle without re-reading the config file every time.
+func newApp(cfg *config.Config) (*app.App, error) {
 	var regs []registry.Registry
 	for _, name := range cfg.EnabledRegistryNames() {
 		r, err := registry.New(name, cfg.Scan.Timeout, cfg.Scan.Retries)
@@ -71,29 +76,6 @@ func buildApp(_ *cobra.Command) (*app.App, error) {
 		return nil, err
 	}
 	return app.New(cfg, regs, store), nil
-}
-
-// buildAppForConfig constructs the App from a config path directly, without
-// requiring a cobra.Command. Used by long-running modes (monitor) that build
-// a fresh App per cycle without a command context.
-func buildAppForConfig(path string) (*app.App, *config.Config, error) {
-	cfg, err := config.Load(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	var regs []registry.Registry
-	for _, name := range cfg.EnabledRegistryNames() {
-		r, err := registry.New(name, cfg.Scan.Timeout, cfg.Scan.Retries)
-		if err != nil {
-			return nil, nil, err
-		}
-		regs = append(regs, r)
-	}
-	store, err := storage.Open(cfg.Database.Path)
-	if err != nil {
-		return nil, nil, err
-	}
-	return app.New(cfg, regs, store), cfg, nil
 }
 
 // Run executes the CLI. It is the entry point called from main.

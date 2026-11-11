@@ -52,9 +52,10 @@ var monitorFormat string
 
 // runMonitorCycle builds a fresh App and runs one scan, rendering the result.
 // A new App per cycle keeps the store connection lifecycle simple for the
-// long-running mode. Uses buildAppForConfig to avoid the cobra.Command hack.
+// long-running mode while the config file is still re-read each cycle, so a
+// threshold change takes effect without restarting the monitor.
 func runMonitorCycle(ctx context.Context) error {
-	a, cfg, err := buildAppForConfig(configPath)
+	a, cfg, err := buildApp()
 	if err != nil {
 		return err
 	}
