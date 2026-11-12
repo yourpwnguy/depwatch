@@ -45,11 +45,35 @@ const (
 // other caller) validate through here, so there is exactly one definition of
 // "known ecosystem".
 func ParseEcosystem(s string) (Ecosystem, error) {
-	switch eco := Ecosystem(strings.ToLower(strings.TrimSpace(s))); eco {
-	case EcosystemNpm, EcosystemPypi, EcosystemCrates:
-		return eco, nil
-	default:
+	eco := Ecosystem(strings.ToLower(strings.TrimSpace(s)))
+	if !IsKnownEcosystem(eco) {
 		return "", fmt.Errorf("unknown ecosystem %q: want npm, pypi, or crates", s)
+	}
+	return eco, nil
+}
+
+// IsKnownEcosystem reports whether eco exactly matches a supported ecosystem
+// key. Unlike ParseEcosystem it does not normalize, because config map keys are
+// used verbatim for lookups: accepting "NPM" there would pass validation and
+// then fail to find its registry entry (or fail later in registry.New).
+func IsKnownEcosystem(eco Ecosystem) bool {
+	switch eco {
+	case EcosystemNpm, EcosystemPypi, EcosystemCrates:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsKnownRegistry reports whether name exactly matches a supported public
+// registry key. Used by config validation to reject typos such as "npmm"
+// under 'registries', which would otherwise be silently ignored.
+func IsKnownRegistry(name RegistryName) bool {
+	switch name {
+	case RegistryNpm, RegistryPypi, RegistryCrates:
+		return true
+	default:
+		return false
 	}
 }
 

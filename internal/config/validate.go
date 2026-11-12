@@ -8,9 +8,14 @@ import (
 
 // Validate enforces the invariants required before a scan can run. These are the
 // hard requirements: an organization name, at least one ecosystem listed, at least
-// one registry enabled, and valid risk-level strings for thresholds. Returning an
-// error here prevents the scan from starting with misconfiguration that would
-// produce meaningless results.
+// one registry enabled, only known ecosystem/registry keys, and valid risk-level
+// strings for thresholds. Returning an error here prevents the scan from starting
+// with misconfiguration that would produce meaningless results.
+//
+// The key checks are deliberately strict (no case folding): a typo like
+// "ecosystems: npmm:" or "registries: npmm:" used to be ignored, so the scan
+// reported zero packages and looked successful. Failing here turns that silent
+// no-op into a clear error before any network work happens.
 func (c *Config) Validate() error {
 	if c.Organization == "" {
 		return fmt.Errorf("config: organization is required")
@@ -18,11 +23,18 @@ func (c *Config) Validate() error {
 	if len(c.Ecosystems) == 0 {
 		return fmt.Errorf("config: at least one ecosystem must be listed under 'ecosystems'")
 	}
+	for eco := range c.Ecosystems {
+		if !domain.IsKnownEcosystem(domain.Ecosystem(eco)) {
+			return fmt.Errorf("config: unknown ecosystem %q under 'ecosystems' (want npm, pypi, or crates)", eco)
+		}
+	}
 	anyReg := false
-	for _, r := range c.Registries {
+	for name, r := range c.Registries {
+		if !domain.IsKnownRegistry(domain.RegistryName(name)) {
+			return fmt.Errorf("config: unknown registry %q under 'registries' (want npm, pypi, or crates)", name)
+		}
 		if r != nil && r.Enabled {
 			anyReg = true
-			break
 		}
 	}
 	if !anyReg {
