@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/yourpwnguy/depwatch/internal/alerting"
@@ -86,9 +87,14 @@ func (a *App) Scan(ctx context.Context, opts ScanOptions) (*domain.ScanResult, e
 				return nil, err
 			}
 			if a.alertEnv != "" {
-				// Alert delivery failures must not abort the scan; log-and-continue
-				// is correct because the alert is already persisted.
-				_ = alerting.Send(ctx, a.alertEnv, alert)
+				// Delivery failure must not abort the scan: the alert is already
+				// persisted and visible via `depwatch alerts`, so the finding is
+				// not lost. Log it anyway: silently swallowing this is how you
+				// discover during an incident that the webhook never worked.
+				if err := alerting.Send(ctx, a.alertEnv, alert); err != nil {
+					log.Printf("alert delivery failed for %s (%s): %v",
+						alert.PackageName, alert.Registry, err)
+				}
 			}
 		}
 	}

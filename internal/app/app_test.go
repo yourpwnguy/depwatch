@@ -1,8 +1,13 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"log"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,6 +203,61 @@ func TestApp_ScanAlertsOnEscalation(t *testing.T) {
 	}
 	if len(alerts) != 1 {
 		t.Fatalf("escalation should add 1 alert, got %d", len(alerts))
+	}
+}
+
+// TestApp_ScanLogsAlertDeliveryFailure guards the reliability fix: a broken
+// webhook must not abort a scan (the alert is already persisted), but it must be
+// visible in the log instead of vanishing. The test points the webhook at a
+// server that always returns 500, then checks the scan succeeds and logs it.
+func TestApp_ScanLogsAlertDeliveryFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("DEPWATCH_TEST_SLACK_WEBHOOK", srv.URL)
+
+	fake := &fakeRegistry{
+		name: domain.RegistryNpm,
+		collide: map[string]*domain.PackageInfo{
+			"evil-dep": {
+				Name:      "evil-dep",
+				Registry:  domain.RegistryNpm,
+				Version:   "1.0.0",
+				CreatedAt: time.Now(),
+			},
+		},
+	}
+
+	path := filepath.Join(t.TempDir(), "app_test.db")
+	store, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	cfg := &config.Config{
+		Organization: "test",
+		Ecosystems:   map[string][]string{"npm": {"evil-dep"}},
+		Registries:   map[string]*config.RegistryConfig{"npm": {Enabled: true}},
+		Alerts: config.AlertConfig{Slack: config.SlackConfig{
+			Enabled:    true,
+			WebhookEnv: "DEPWATCH_TEST_SLACK_WEBHOOK",
+		}},
+	}
+	cfg.ApplyDefaults()
+	a := app.New(cfg, []registry.Registry{fake}, store)
+
+	original := log.Writer()
+	t.Cleanup(func() { log.SetOutput(original) })
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+
+	if _, err := a.Scan(context.Background(), app.ScanOptions{}); err != nil {
+		t.Fatalf("scan must survive a delivery failure: %v", err)
+	}
+	if !strings.Contains(logs.String(), "alert delivery failed") {
+		t.Fatalf("expected delivery failure in log, got %q", logs.String())
 	}
 }
 
