@@ -93,3 +93,47 @@ func TestStore_HistoryOrderAndAlerts(t *testing.T) {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
 }
+
+// TestStore_ResolveAlerts covers the lifecycle flag: resolving by package name
+// must clear only that package's unresolved rows, ignore other packages, and be
+// a harmless no-op when there is nothing left to resolve.
+func TestStore_ResolveAlerts(t *testing.T) {
+	s := tempStore(t)
+	now := time.Now()
+	for _, name := range []string{"alpha", "alpha", "beta"} {
+		if err := s.AddAlert(&domain.Alert{
+			PackageName: name,
+			Registry:    domain.RegistryNpm,
+			Risk:        domain.RiskHigh,
+			Type:        domain.AlertNewCollision,
+			CreatedAt:   now,
+		}); err != nil {
+			t.Fatalf("add alert for %s: %v", name, err)
+		}
+	}
+
+	n, err := s.ResolveAlerts("alpha")
+	if err != nil {
+		t.Fatalf("resolve alpha: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("resolved %d alerts for alpha, want 2", n)
+	}
+
+	alerts, err := s.UnresolvedAlerts()
+	if err != nil {
+		t.Fatalf("alerts: %v", err)
+	}
+	if len(alerts) != 1 || alerts[0].PackageName != "beta" {
+		t.Fatalf("expected only beta unresolved, got %+v", alerts)
+	}
+
+	// Resolving again must not error or change anything.
+	n, err = s.ResolveAlerts("alpha")
+	if err != nil {
+		t.Fatalf("second resolve alpha: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("second resolve changed %d rows, want 0", n)
+	}
+}

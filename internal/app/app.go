@@ -124,6 +124,12 @@ func (a *App) Alerts(ctx context.Context) ([]domain.Alert, error) {
 	return a.store.UnresolvedAlerts()
 }
 
+// ResolveAlerts acknowledges every unresolved alert for a package and reports
+// how many were flipped. Used by `depwatch alerts resolve <name>`.
+func (a *App) ResolveAlerts(ctx context.Context, name string) (int64, error) {
+	return a.store.ResolveAlerts(name)
+}
+
 // CI runs a scan and returns a result suitable for CI gating. The caller decides
 // the exit code based on whether any entry meets the block_ci threshold.
 func (a *App) CI(ctx context.Context) (*domain.ScanResult, error) {

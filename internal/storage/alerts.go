@@ -25,7 +25,8 @@ func (s *Store) AddAlert(a *domain.Alert) error {
 
 // UnresolvedAlerts returns all alerts that have not been marked resolved, ordered
 // newest first. The resolved flag is lifecycle-managed: `depwatch alerts` displays
-// them, and a future resolve command will flip the flag.
+// them and `depwatch alerts resolve <name>` flips the flag once a human has
+// acknowledged the finding.
 func (s *Store) UnresolvedAlerts() ([]domain.Alert, error) {
 	rows, err := s.db.Query(`
 		SELECT package_name, registry, risk, type, created_at
@@ -53,4 +54,24 @@ func (s *Store) UnresolvedAlerts() ([]domain.Alert, error) {
 		})
 	}
 	return out, rows.Err()
+}
+
+// ResolveAlerts marks every unresolved alert for a package name as resolved and
+// returns how many rows changed. It is the only writer of the resolved flag.
+//
+// Scoping by package name (not registry) is intentional: an acknowledgment is a
+// human saying "I looked at this finding", and the alerts list groups by package.
+// Resolving an already-resolved or unknown package is a no-op that returns 0, so
+// callers can report "nothing to do" instead of failing.
+func (s *Store) ResolveAlerts(name string) (int64, error) {
+	res, err := s.db.Exec(`
+		UPDATE alerts SET resolved = 1 WHERE resolved = 0 AND package_name = ?`, name)
+	if err != nil {
+		return 0, fmt.Errorf("resolve alerts: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("resolve alerts rows affected: %w", err)
+	}
+	return n, nil
 }
